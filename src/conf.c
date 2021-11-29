@@ -1986,11 +1986,11 @@ static int config__read_file_core(struct mosquitto__config *config, bool reload,
 						return MOSQ_ERR_INVAL;
 					}
 					if(conf__parse_int(&token, "bridge remote_jwt_expiration", &tmp_int, &saveptr)) return MOSQ_ERR_INVAL;
-					if(tmp_int < 1){
+					if(tmp_int < 60){
 						log__printf(NULL, MOSQ_LOG_ERR, "Error: Invalid bridge remote_jwt_expiration value (%d).", tmp_int);
 						return MOSQ_ERR_INVAL;
 					}
-                                        cur_bridge->jwt.claim_expiration = tmp_int;
+					cur_bridge->jwt.claim_expiration = tmp_int;
 #else
 					log__printf(NULL, MOSQ_LOG_WARNING, "Warning: Bridge, JSON or TLS support not available.");
 #endif

@@ -1087,27 +1087,37 @@ void bridge_check(void)
 
 static void update_jwt_and_remote_password(struct mosquitto *context)
 {
-	char *jwt;
+	char *jwt = NULL;
 
 	time_t now_real = time(NULL);
 	time_t expiration = now_real + context->bridge->jwt.claim_expiration;
 
-	if (context->bridge->jwt.signed_jwt != NULL) {
-		free(context->bridge->jwt.signed_jwt);
-		context->bridge->jwt.signed_jwt = NULL;
-		context->password = NULL;
-		context->bridge->remote_password = NULL;
+	int expiration_margin = context->bridge->jwt.claim_expiration % 10;
+	if (expiration_margin > 300) {
+		expiration_margin = 300;
 	}
 
-	// TODO ONly create new jwt if close to expiration, consider low claim_expiration
-	jwt = jwt__create(context->bridge->jwt.claim_audience, now_real, expiration, context->bridge->jwt.keyfile);
-	if (jwt != NULL) {
-		log__printf(NULL, MOSQ_LOG_DEBUG, "JWT is: %s", jwt);
-		context->bridge->jwt.signed_jwt = jwt;
-		context->bridge->jwt.expires_at = expiration;
+	if (context->bridge->jwt.expires_at == 0 ||
+			now_real + expiration_margin > context->bridge->jwt.expires_at) {
 
-		context->password = jwt;
-		context->bridge->remote_password = jwt;
+
+log__printf(NULL, MOSQ_LOG_DEBUG, "Calculating new JWT");
+		if (context->bridge->jwt.signed_jwt != NULL) {
+			free(context->bridge->jwt.signed_jwt);
+			context->bridge->jwt.signed_jwt = NULL;
+			context->password = NULL;
+			context->bridge->remote_password = NULL;
+		}
+
+		// TODO ONly create new jwt if close to expiration, consider low claim_expiration
+		jwt = jwt__create(context->bridge->jwt.claim_audience, now_real, expiration, context->bridge->jwt.keyfile);
+		if (jwt != NULL) {
+			context->bridge->jwt.signed_jwt = jwt;
+			context->bridge->jwt.expires_at = expiration;
+
+			context->password = jwt;
+			context->bridge->remote_password = jwt;
+		}
 	}
 }
 
