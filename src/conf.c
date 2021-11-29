@@ -352,6 +352,8 @@ void config__bridge_cleanup(struct mosquitto__bridge *bridge)
 	mosquitto__free(bridge->remote_clientid);
 	mosquitto__free(bridge->remote_username);
 	mosquitto__free(bridge->remote_password);
+	mosquitto__free(bridge->jwt.claim_audience);
+	mosquitto__free(bridge->jwt.keyfile);
 	mosquitto__free(bridge->local_clientid);
 	mosquitto__free(bridge->local_username);
 	mosquitto__free(bridge->local_password);
@@ -1966,6 +1968,41 @@ static int config__read_file_core(struct mosquitto__config *config, bool reload,
 					if(conf__parse_string(&token, "bridge remote_password", &cur_bridge->remote_password, &saveptr)) return MOSQ_ERR_INVAL;
 #else
 					log__printf(NULL, MOSQ_LOG_WARNING, "Warning: Bridge support not available.");
+#endif
+				}else if(!strcmp(token, "remote_jwt_audience")){
+#if defined(WITH_BRIDGE) && defined(WITH_CJSON) && defined(WITH_TLS)
+					if(!cur_bridge){
+						log__printf(NULL, MOSQ_LOG_ERR, "Error: Invalid bridge configuration.");
+						return MOSQ_ERR_INVAL;
+					}
+					if(conf__parse_string(&token, "bridge remote_jwt_audience", &cur_bridge->jwt.claim_audience, &saveptr)) return MOSQ_ERR_INVAL;
+#else
+					log__printf(NULL, MOSQ_LOG_WARNING, "Warning: Bridge, JSON or TLS support not available.");
+#endif
+				}else if(!strcmp(token, "remote_jwt_expiration")){
+#if defined(WITH_BRIDGE) && defined(WITH_CJSON) && defined(WITH_TLS)
+					if(!cur_bridge){
+						log__printf(NULL, MOSQ_LOG_ERR, "Error: Invalid bridge configuration.");
+						return MOSQ_ERR_INVAL;
+					}
+					if(conf__parse_int(&token, "bridge remote_jwt_expiration", &tmp_int, &saveptr)) return MOSQ_ERR_INVAL;
+					if(tmp_int < 1){
+						log__printf(NULL, MOSQ_LOG_ERR, "Error: Invalid bridge remote_jwt_expiration value (%d).", tmp_int);
+						return MOSQ_ERR_INVAL;
+					}
+                                        cur_bridge->jwt.claim_expiration = tmp_int;
+#else
+					log__printf(NULL, MOSQ_LOG_WARNING, "Warning: Bridge, JSON or TLS support not available.");
+#endif
+				}else if(!strcmp(token, "remote_jwt_keyfile")){
+#if defined(WITH_BRIDGE) && defined(WITH_CJSON) && defined(WITH_TLS)
+					if(!cur_bridge){
+						log__printf(NULL, MOSQ_LOG_ERR, "Error: Invalid bridge configuration.");
+						return MOSQ_ERR_INVAL;
+					}
+					if(conf__parse_string(&token, "bridge remote_jwt_keyfile", &cur_bridge->jwt.keyfile, &saveptr)) return MOSQ_ERR_INVAL;
+#else
+					log__printf(NULL, MOSQ_LOG_WARNING, "Warning: Bridge, JSON or TLS support not available.");
 #endif
 				}else if(!strcmp(token, "password_file")){
 					conf__set_cur_security_options(config, cur_listener, &cur_security_options);

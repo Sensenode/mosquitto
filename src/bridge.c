@@ -36,7 +36,7 @@ Contributors:
 #ifndef WIN32
 #include <unistd.h>
 #else
-#include <process.h>
+include <process.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
@@ -54,6 +54,7 @@ Contributors:
 #include "util_mosq.h"
 #include "will_mosq.h"
 #include "utlist.h"
+#include "jwt.h"
 
 #ifdef WITH_BRIDGE
 
@@ -62,6 +63,9 @@ static void bridge__backoff_reset(struct mosquitto *context);
 #if defined(__GLIBC__) && defined(WITH_ADNS)
 static int bridge__connect_step1(struct mosquitto *context);
 static int bridge__connect_step2(struct mosquitto *context);
+#endif
+#if defined(WITH_CJSON) && defined(WITH_TLS)
+static void update_jwt_and_remote_password(struct mosquitto *context);
 #endif
 static void bridge__packet_cleanup(struct mosquitto *context);
 
@@ -93,7 +97,11 @@ static struct mosquitto *bridge__new(struct mosquitto__bridge *bridge)
 	new_context->is_bridge = true;
 
 	new_context->username = bridge->remote_username;
-	new_context->password = bridge->remote_password;
+	if(bridge->jwt.keyfile != NULL){
+		free(bridge->remote_password);
+	}else{
+		new_context->password = bridge->remote_password;
+	}
 
 #ifdef WITH_TLS
 	new_context->tls_cafile = bridge->tls_cafile;
@@ -308,6 +316,10 @@ static int bridge__connect_step1(struct mosquitto *context)
 				return rc;
 			}
 		}
+	}
+
+	if (context->bridge->jwt.keyfile != NULL) {
+		update_jwt_and_remote_password(context);
 	}
 
 	log__printf(NULL, MOSQ_LOG_NOTICE, "Connecting bridge (step 1) %s (%s:%d)", context->bridge->name, context->bridge->addresses[context->bridge->cur_address].address, context->bridge->addresses[context->bridge->cur_address].port);
@@ -556,6 +568,10 @@ int bridge__connect(struct mosquitto *context)
 		topic_alias_max_prop = &topic_alias_max;
 	}
 
+	if (context->bridge->jwt.keyfile != NULL) {
+		update_jwt_and_remote_password(context);
+	}
+
 	rc2 = send__connect(context, context->keepalive, context->clean_start, topic_alias_max_prop);
 	if(rc2 == MOSQ_ERR_SUCCESS){
 		return rc;
@@ -787,6 +803,11 @@ void bridge__cleanup(struct mosquitto *context)
 		mosquitto__free(context->bridge->remote_password);
 	}
 	context->bridge->remote_password = NULL;
+
+	if(context->bridge->jwt.signed_jwt != NULL){
+		mosquitto__free(context->bridge->jwt.signed_jwt);
+		context->bridge->jwt.signed_jwt = NULL;
+	}
 #ifdef WITH_TLS
 	if(context->ssl_ctx){
 		SSL_CTX_free(context->ssl_ctx);
@@ -923,6 +944,9 @@ void bridge_check(void)
 		context = db.bridges[i];
 
 		if(net__is_connected(context)){
+            // @@PH
+			// check if JWT needs to be updated
+			// update_jwt(context);
 			mosquitto__check_keepalive(context);
 			bridge_check_pending(context);
 
@@ -1058,6 +1082,32 @@ void bridge_check(void)
 				}
 			}
 		}
+	}
+}
+
+static void update_jwt_and_remote_password(struct mosquitto *context)
+{
+	char *jwt;
+
+	time_t now_real = time(NULL);
+	time_t expiration = now_real + context->bridge->jwt.claim_expiration;
+
+	if (context->bridge->jwt.signed_jwt != NULL) {
+		free(context->bridge->jwt.signed_jwt);
+		context->bridge->jwt.signed_jwt = NULL;
+		context->password = NULL;
+		context->bridge->remote_password = NULL;
+	}
+
+	// TODO ONly create new jwt if close to expiration, consider low claim_expiration
+	jwt = jwt__create(context->bridge->jwt.claim_audience, now_real, expiration, context->bridge->jwt.keyfile);
+	if (jwt != NULL) {
+		log__printf(NULL, MOSQ_LOG_DEBUG, "JWT is: %s", jwt);
+		context->bridge->jwt.signed_jwt = jwt;
+		context->bridge->jwt.expires_at = expiration;
+
+		context->password = jwt;
+		context->bridge->remote_password = jwt;
 	}
 }
 

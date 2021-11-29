@@ -21,6 +21,7 @@ set (MOSQ_SRCS
 	../lib/handle_unsuback.c
 	handle_unsubscribe.c
 	json_help.c json_help.h
+	jwt.c jwt.h
 	keepalive.c
 	lib_load.h
 	listeners.c

@@ -544,6 +544,14 @@ struct bridge_address{
 	uint16_t port;
 };
 
+struct mosquitto__bridge_remote_jwt{
+	char *claim_audience;
+	int claim_expiration;
+	char *keyfile;
+	time_t expires_at;
+	char *signed_jwt;
+};
+
 struct mosquitto__bridge{
 	char *name;
 	struct bridge_address *addresses;
@@ -571,6 +579,7 @@ struct mosquitto__bridge{
 	char *remote_clientid;
 	char *remote_username;
 	char *remote_password;
+	struct mosquitto__bridge_remote_jwt jwt;
 	char *local_clientid;
 	char *local_username;
 	char *local_password;

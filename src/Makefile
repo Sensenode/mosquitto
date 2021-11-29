@@ -28,6 +28,7 @@ OBJS=	mosquitto.o \
 		handle_unsuback.o \
 		handle_unsubscribe.o \
 		json_help.o \
+		jwt.o \
 		keepalive.o \
 		listeners.o \
 		logging.o \
@@ -162,6 +163,9 @@ handle_unsubscribe.o : handle_unsubscribe.c mosquitto_broker_internal.h
 	${CROSS_COMPILE}${CC} $(BROKER_CPPFLAGS) $(BROKER_CFLAGS) -c $< -o $@
 
 json_help.o : json_help.c json_help.h
+	${CROSS_COMPILE}${CC} $(BROKER_CPPFLAGS) $(BROKER_CFLAGS) -c $< -o $@
+
+jwt.o : jwt.c jwt.h
 	${CROSS_COMPILE}${CC} $(BROKER_CPPFLAGS) $(BROKER_CFLAGS) -c $< -o $@
 
 keepalive.o : keepalive.c mosquitto_broker_internal.h
