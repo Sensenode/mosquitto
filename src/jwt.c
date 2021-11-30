@@ -18,7 +18,7 @@ Contributors:
 
 #include "config.h"
 
-//#if defined(WITH_BRIDGE) && defined(WITH_CJSON) && defined(WITH_TLS)
+#if defined(WITH_BRIDGE) && defined(WITH_CJSON) && defined(WITH_TLS)
 
 #include <stdlib.h>
 #include <string.h>
@@ -61,7 +61,7 @@ char *jwt__create(char *audience, time_t issued_at, time_t expiration, char *key
 	claims_enc = base64url_encode(claims, strlen(claims));
 	if (NULL == claims_enc) goto err4;
 
-	jwt_raw = malloc(strlen(header_enc) + strlen(claims_enc) + 20); // TODO just add 2
+	jwt_raw = mosquitto__malloc(strlen(header_enc) + strlen(claims_enc) + 2);
 	if (NULL == jwt_raw) goto err5;
 	sprintf(jwt_raw, "%s.%s", header_enc, claims_enc);
 
@@ -77,27 +77,27 @@ char *jwt__create(char *audience, time_t issued_at, time_t expiration, char *key
 	rsa_buf_enc = base64url_encode(rsa_buf, (size_t) rsa_buf_len);
 	if (NULL == rsa_buf_enc) goto err8;
 
-	jwt = malloc(strlen(jwt_raw) + strlen(rsa_buf_enc) + 2);
+	jwt = mosquitto__malloc(strlen(jwt_raw) + strlen(rsa_buf_enc) + 2);
 	if (NULL == jwt) goto err9;
 
 	sprintf(jwt, "%s.%s", jwt_raw, rsa_buf_enc);
 
 err9:
-	free(rsa_buf_enc);
+	mosquitto__free(rsa_buf_enc);
 err8:
-	free(rsa_buf);
+	mosquitto__free(rsa_buf);
 err7:
-	EVP_PKEY_free(key);
+	EVP_PKEY_mosquitto__free(key);
 err6:
-	free(jwt_raw);
+	mosquitto__free(jwt_raw);
 err5:
-	free(claims_enc);
+	mosquitto__free(claims_enc);
 err4:
-	free(header_enc);
+	mosquitto__free(header_enc);
 err3:
-	free(claims);
+	mosquitto__free(claims);
 err2:
-	free(header);
+	mosquitto__free(header);
 err1:
 
 	return jwt;
@@ -173,13 +173,13 @@ static EVP_PKEY *read_private_key(char *keyfile)
 
 	fd = fopen(keyfile, "r");
 	if (NULL == fd) {
-		// TODO LOG
+		log__printf(NULL, MOSQ_LOG_ERR, "Could not read private key file %d for JWT remote password", keyfile);
 		goto err1;
 	}
 
 	key = PEM_read_PrivateKey(fd, NULL, NULL, NULL);
 	if (NULL == key) {
-		// TODO LOG
+		log__printf(NULL, MOSQ_LOG_ERR, "Could not parse private key file %d for JWT remote password", keyfile);
 		goto err2;
 	}
 
@@ -204,11 +204,11 @@ static char *sign(EVP_PKEY *key, char *in, size_t len_in, int *len_out)
 
 	 if (1 != EVP_DigestSignFinal(context, NULL, &output_len)) goto err2;
 
-	output = malloc(output_len);
+	output = mosquitto__malloc(output_len);
 	if (NULL == output) goto err2;
 
 	if (1 != EVP_DigestSignFinal(context, (unsigned char *)output, &output_len)) {
-		free(output);
+		mosquitto__free(output);
 		goto err2;
 	}
 
@@ -221,4 +221,4 @@ err1:
 	return output;
 }
 
-//#endif
+#endif

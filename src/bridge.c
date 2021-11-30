@@ -65,7 +65,7 @@ static int bridge__connect_step1(struct mosquitto *context);
 static int bridge__connect_step2(struct mosquitto *context);
 #endif
 #if defined(WITH_CJSON) && defined(WITH_TLS)
-static void update_jwt_and_remote_password(struct mosquitto *context);
+static int update_jwt_and_remote_password(struct mosquitto *context);
 #endif
 static void bridge__packet_cleanup(struct mosquitto *context);
 
@@ -97,9 +97,12 @@ static struct mosquitto *bridge__new(struct mosquitto__bridge *bridge)
 	new_context->is_bridge = true;
 
 	new_context->username = bridge->remote_username;
+#if defined(WITH_CJSON) && defined(WITH_TLS)
 	if(bridge->jwt.keyfile != NULL){
 		free(bridge->remote_password);
-	}else{
+	}else
+#endif
+	{
 		new_context->password = bridge->remote_password;
 	}
 
@@ -318,9 +321,11 @@ static int bridge__connect_step1(struct mosquitto *context)
 		}
 	}
 
+#if defined(WITH_CJSON) && defined(WITH_TLS)
 	if (context->bridge->jwt.keyfile != NULL) {
 		update_jwt_and_remote_password(context);
 	}
+#endif
 
 	log__printf(NULL, MOSQ_LOG_NOTICE, "Connecting bridge (step 1) %s (%s:%d)", context->bridge->name, context->bridge->addresses[context->bridge->cur_address].address, context->bridge->addresses[context->bridge->cur_address].port);
 	rc = net__try_connect_step1(context, context->bridge->addresses[context->bridge->cur_address].address);
@@ -568,9 +573,11 @@ int bridge__connect(struct mosquitto *context)
 		topic_alias_max_prop = &topic_alias_max;
 	}
 
+#if defined(WITH_CJSON) && defined(WITH_TLS)
 	if (context->bridge->jwt.keyfile != NULL) {
 		update_jwt_and_remote_password(context);
 	}
+#endif
 
 	rc2 = send__connect(context, context->keepalive, context->clean_start, topic_alias_max_prop);
 	if(rc2 == MOSQ_ERR_SUCCESS){
@@ -799,15 +806,16 @@ void bridge__cleanup(struct mosquitto *context)
 	}
 	context->bridge->remote_username = NULL;
 
+	if(context->bridge->jwt.signed_jwt != NULL && context->bridge->jwt.signed_jwt != context->bridge->remote_password){
+		mosquitto__free(context->bridge->jwt.signed_jwt);
+	}
+	context->bridge->jwt.signed_jwt = NULL;
+
 	if(context->bridge->remote_password != context->password){
 		mosquitto__free(context->bridge->remote_password);
 	}
 	context->bridge->remote_password = NULL;
 
-	if(context->bridge->jwt.signed_jwt != NULL){
-		mosquitto__free(context->bridge->jwt.signed_jwt);
-		context->bridge->jwt.signed_jwt = NULL;
-	}
 #ifdef WITH_TLS
 	if(context->ssl_ctx){
 		SSL_CTX_free(context->ssl_ctx);
@@ -944,9 +952,7 @@ void bridge_check(void)
 		context = db.bridges[i];
 
 		if(net__is_connected(context)){
-            // @@PH
-			// check if JWT needs to be updated
-			// update_jwt(context);
+
 			mosquitto__check_keepalive(context);
 			bridge_check_pending(context);
 
@@ -995,10 +1001,20 @@ void bridge_check(void)
 					}
 				}
 			}
+
+#if defined(WITH_CJSON) && defined(WITH_TLS)
+			if (1 == update_jwt_and_remote_password(context)) {
+				send__disconnect(context, MQTT_RC_ADMINISTRATIVE_ACTION, NULL);
+			}
+#endif
 		}
 
 		if(!net__is_connected(context)){
 			if(reload_if_needed(context)) continue;
+
+#if defined(WITH_CJSON) && defined(WITH_TLS)
+			update_jwt_and_remote_password(context);
+#endif
 
 			/* Want to try to restart the bridge connection */
 			if(!context->bridge->restart_t){
@@ -1085,23 +1101,25 @@ void bridge_check(void)
 	}
 }
 
-static void update_jwt_and_remote_password(struct mosquitto *context)
+#if defined(WITH_CJSON) && defined(WITH_TLS)
+static int update_jwt_and_remote_password(struct mosquitto *context)
 {
 	char *jwt = NULL;
+	int is_updated = 0;
 
 	time_t now_real = time(NULL);
 	time_t expiration = now_real + context->bridge->jwt.claim_expiration;
 
-	int expiration_margin = context->bridge->jwt.claim_expiration % 10;
-	if (expiration_margin > 300) {
-		expiration_margin = 300;
-	}
+	int expiration_margin = context->bridge->jwt.claim_expiration > 3000 ?
+			300 : context->bridge->jwt.claim_expiration % 10;
 
+log__printf(NULL, MOSQ_LOG_DEBUG, "expires at is %d, now + margin is %d, secs left %d",
+			context->bridge->jwt.expires_at,
+			now_real + expiration_margin,
+			context->bridge->jwt.expires_at - now_real + expiration_margin);
 	if (context->bridge->jwt.expires_at == 0 ||
 			now_real + expiration_margin > context->bridge->jwt.expires_at) {
 
-
-log__printf(NULL, MOSQ_LOG_DEBUG, "Calculating new JWT");
 		if (context->bridge->jwt.signed_jwt != NULL) {
 			free(context->bridge->jwt.signed_jwt);
 			context->bridge->jwt.signed_jwt = NULL;
@@ -1109,7 +1127,6 @@ log__printf(NULL, MOSQ_LOG_DEBUG, "Calculating new JWT");
 			context->bridge->remote_password = NULL;
 		}
 
-		// TODO ONly create new jwt if close to expiration, consider low claim_expiration
 		jwt = jwt__create(context->bridge->jwt.claim_audience, now_real, expiration, context->bridge->jwt.keyfile);
 		if (jwt != NULL) {
 			context->bridge->jwt.signed_jwt = jwt;
@@ -1117,8 +1134,12 @@ log__printf(NULL, MOSQ_LOG_DEBUG, "Calculating new JWT");
 
 			context->password = jwt;
 			context->bridge->remote_password = jwt;
+			is_updated = 1;
 		}
 	}
+
+	return is_updated;
 }
+#endif
 
 #endif
