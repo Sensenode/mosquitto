@@ -1113,10 +1113,6 @@ static int update_jwt_and_remote_password(struct mosquitto *context)
 	int expiration_margin = context->bridge->jwt.claim_expiration > 3000 ?
 			300 : context->bridge->jwt.claim_expiration % 10;
 
-log__printf(NULL, MOSQ_LOG_DEBUG, "expires at is %d, now + margin is %d, secs left %d",
-			context->bridge->jwt.expires_at,
-			now_real + expiration_margin,
-			context->bridge->jwt.expires_at - now_real + expiration_margin);
 	if (context->bridge->jwt.expires_at == 0 ||
 			now_real + expiration_margin > context->bridge->jwt.expires_at) {
 

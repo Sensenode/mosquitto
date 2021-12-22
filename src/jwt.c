@@ -31,6 +31,7 @@ Contributors:
 #include "json_help.h"
 #include "base64_mosq.h"
 #include "logging_mosq.h"
+#include "memory_mosq.h"
 
 static char *create_header(void);
 static char *create_claim_set(char *audience, time_t issued_at, time_t expiration);
@@ -87,7 +88,7 @@ err9:
 err8:
 	mosquitto__free(rsa_buf);
 err7:
-	EVP_PKEY_mosquitto__free(key);
+	mosquitto__free(key);
 err6:
 	mosquitto__free(jwt_raw);
 err5:
